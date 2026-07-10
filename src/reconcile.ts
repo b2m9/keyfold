@@ -67,9 +67,10 @@ export function reconcile(
     }
   }
 
-  // A no-op delta — empty, all-absent tombstones, or patches that restate
-  // current values — still validates the touched base list, then keeps its
-  // reference. This preserves the cheap no-op without hiding corrupt ids.
+  // A delta that changes nothing keeps the base reference, but only after
+  // the touched list has been validated: a cheap no-op must not hide
+  // corrupt ids. Empty deltas, absent-target tombstones, and patches that
+  // restate current values all count as no-ops.
   return changed ? next : base;
 }
 
