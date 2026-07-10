@@ -32,7 +32,7 @@ export type Delta<T, Atomic = never> = T extends Atomic
   ? T
   : T extends readonly unknown[]
     ? DeltaArray<T, Atomic>
-    : T extends KnownOpaque
+    : IsKnownOpaque<T> extends true
       ? T
       : T extends object
         ? DeltaObject<T, Atomic>
@@ -51,13 +51,13 @@ type DeltaObject<T extends object, Atomic> = {
 
 type DeltaItem<Element, Atomic> = Element extends Atomic
   ? Element
-  : Element extends KnownOpaque
+  : IsKnownOpaque<Element> extends true
     ? Element
     : Element extends object
       ? Delta<Element, Atomic> & { readonly $delete?: true }
       : Element;
 
-/** Built-ins whose data is opaque to both the runtime fold and `Delta<T>`. */
+/** Structurally distinctive built-ins that the runtime fold never enters. */
 type KnownOpaque =
   | ((...args: never[]) => unknown)
   | ArrayBuffer
@@ -69,3 +69,17 @@ type KnownOpaque =
   | RegExp
   | WeakMap<object, unknown>
   | WeakSet<object>;
+
+type IsKnownOpaque<T> = T extends KnownOpaque ? true : IsBuiltinError<T>;
+
+// Error is unusually structural. Match its built-in surface exactly so plain
+// error payload records keep their recursive delta shape.
+type IsBuiltinError<T> = T extends Error
+  ? Error extends T
+    ? Exclude<keyof T, keyof Error> extends never
+      ? Exclude<keyof Error, keyof T> extends never
+        ? true
+        : false
+      : false
+    : false
+  : false;

@@ -73,7 +73,31 @@ const partialAtomicDelta: Delta<{ model: Model }, Model> = {
 };
 void partialAtomicDelta;
 
+const errorDelta: Delta<{ error: Error }> = { error: new Error("updated") };
+void errorDelta;
+
+const partialErrorDelta: Delta<{ error: Error }> = {
+  // @ts-expect-error built-in errors must be supplied whole
+  error: { message: "updated" },
+};
+void partialErrorDelta;
+
 const structuralErrorPayload: Delta<{ error: ErrorPayload }> = {
   error: { message: "updated" },
 };
 void structuralErrorPayload;
+
+class HttpError extends Error {
+  status = 500;
+}
+
+// Structural typing cannot tell a subclass with extra members from a payload
+// record, so partial deltas remain accepted; declare such classes as Atomic.
+const subclassErrorDelta: Delta<{ error: HttpError }> = { error: { status: 404 } };
+void subclassErrorDelta;
+
+const atomicSubclassErrorDelta: Delta<{ error: HttpError }, HttpError> = {
+  // @ts-expect-error atomic errors must be supplied whole
+  error: { status: 404 },
+};
+void atomicSubclassErrorDelta;

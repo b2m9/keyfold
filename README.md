@@ -120,7 +120,7 @@ const mergeMoney = createMerger<State, Money>();
 mergeMoney(state, { total: new Money(1999) });
 ```
 
-Built-ins such as `Date`, `Map`, `Set`, `RegExp`, and promises are already atomic. Declare custom classes and other application-specific opaque types explicitly; otherwise TypeScript cannot distinguish their instances from structural object types. `Atomic` only changes the delta type, and TypeScript matching stays structural, so give the class a private field, as above, when actual identity matters.
+Built-ins such as `Date`, `Error`, `Map`, `Set`, `RegExp`, and promises are already atomic. Declare custom classes and other application-specific opaque types explicitly; otherwise TypeScript cannot distinguish their instances from structural object types. `Atomic` only changes the delta type, and TypeScript matching stays structural, so give the class a private field, as above, when actual identity matters.
 
 ### Deletes
 
