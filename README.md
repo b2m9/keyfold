@@ -1,5 +1,7 @@
 # @b2m9/keyfold
 
+Fold partial deltas into a nested state tree — **JSON Merge Patch that understands your keyed lists.**
+
 Partial payloads and arrays are an awkward combination. `lodash.merge` matches arrays by index, so this update:
 
 ```ts
@@ -12,7 +14,7 @@ const base = {
 const delta = { items: [{ id: "b", quantity: 5 }] };
 ```
 
-can corrupt the list into two `b` items. `keyfold` matches configured lists by identity instead:
+can corrupt the list into two `b` items. JSON Merge Patch (RFC 7386) avoids the corruption only by treating every array as opaque and replacing it wholesale — the standard abandons you the moment your state has keyed lists. `keyfold` matches configured lists by identity instead:
 
 ```ts
 import { createMerger } from "@b2m9/keyfold";
@@ -23,7 +25,7 @@ merge(base, delta).items;
 // [{ id: "a", quantity: 1 }, { id: "b", quantity: 5 }]
 ```
 
-It is JSON Merge Patch for keyed lists: a zero-dependency, immutable delta fold for plain state trees held outside a normalized cache. Objects merge, keyed lists reconcile, unkeyed arrays and scalars replace, and deletes are explicit.
+`keyfold` is a zero-dependency, immutable delta fold for plain state trees held outside a normalized cache. Objects merge, keyed lists reconcile, unkeyed arrays and scalars replace, and deletes are explicit.
 
 Use it for websocket reducers, optimistic UI reconciliation, form autosave, configurator recalculation, and other places where one authoritative partial update meets an un-normalized keyed tree.
 
@@ -148,6 +150,12 @@ merge(state, delta); // removes coupon
 
 The token is interpreted only as an object field value. Nested inside a wholesale `replace` value or an unkeyed array, it remains an ordinary string. Item tombstones are already JSON-native and do not require `wireDeletes`.
 
+There is deliberately no "clear the list" operator: an empty list delta is a no-op, because unmentioned items survive. To empty a keyed list, tombstone every item — or leave the list unkeyed on a merger where wholesale replacement is what you mean.
+
+### Errors
+
+`createMerger` throws `KeyfoldConfigError` for malformed or contradictory options; a merger throws `KeyfoldMergeError` when base or delta data violates the contract (duplicate identities, malformed tombstones, and the like). Both are exported for `instanceof` matching, and a throw never leaves a partially merged tree behind.
+
 ## Paths
 
 Paths are dot-separated property names. `[]` means “inside each keyed item of the preceding list”:
@@ -160,7 +168,7 @@ Paths are dot-separated property names. `[]` means “inside each keyed item of 
 
 There are no wildcards, indices, root tokens, or escaping. Properties containing `.`, `[`, or `]` are not addressable in v1. The root cannot be keyed; wrap a top-level array in an object when it needs reconciliation.
 
-Configuration is checked for grammar, reserved names, dead `[]` paths, duplicates, and `keyBy`/`replace` conflicts when the merger is created. Paths are not checked against `T` or runtime data.
+Configuration is checked for grammar, reserved names, dead `[]` paths, duplicates, and policies made unreachable by a broader `replace` when the merger is created. Paths are not checked against `T` or runtime data.
 
 ## Semantics
 
@@ -170,12 +178,12 @@ Configuration is checked for grammar, reserved names, dead `[]` paths, duplicate
 - A plain-object delta over a non-object base folds onto `{}`; a keyed-list delta over a non-array base reconciles against `[]`.
 - `__proto__`, `constructor`, and `prototype` keys in deltas are ignored.
 - The base is never mutated. A throw cannot leave a partial write behind.
-- Empty object deltas return the base reference. Other no-op writes are only value-stable, not necessarily reference-stable.
-- Every valid delta is deterministic and value-idempotent.
+- A merge that changes nothing returns the base reference. Interpreted positions compare by value recursively; verbatim positions (replace values, unkeyed arrays, non-plain objects) compare by reference.
+- Every valid delta is deterministic and idempotent: re-applying the same delta returns the previous result by reference, so a store can drop duplicate frames with one equality check.
 
 Replace values, unkeyed-array contents, and non-plain-object interiors are copied verbatim. Operators placed inside those uninterpreted values are outside the contract and are not scanned or rejected; this is what keeps replacement a cheap pointer swap.
 
-## Honesty rails
+## Guardrails
 
 `keyfold` folds one authoritative delta into a state tree. It is last-delta-wins—not a CRDT, operational transform, store, normalized cache, schema validator, or persistence layer.
 
@@ -188,6 +196,8 @@ The JSON boundary belongs to the caller. `keyfold` does not validate untrusted i
 `Delta<T>` cannot know which arrays are keyed. It admits `$delete` on object array items, then runtime policy decides whether that operator is meaningful. Likewise, the type cannot prove that a newly inserted keyed item or a wholesale replacement contains every field your application needs.
 
 Identity fields are the caller's central responsibility: they must remain stable and unique within each list. `$delete` cannot be a real field on keyed entities. With `wireDeletes: true`, `"@@keyfold/delete"` is reserved as data at interpreted field positions, and field deletes over JSON require the producer and consumer to share that protocol. A third-party producer needs a translation layer.
+
+Inputs are assumed to be finite, JSON-shaped trees. A cyclic base or delta is outside the contract and overflows the call stack; `keyfold` spends no cycles detecting it.
 
 ## License
 
