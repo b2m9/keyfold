@@ -105,6 +105,18 @@ describe("immutability and structural sharing", () => {
     const base = profile();
     expect(merge(base, {})).toBe(base);
   });
+
+  test("returns base itself when a delta restates current values", () => {
+    const base = profile();
+    const next = merge(base, {
+      name: "Ada",
+      nickname: undefined,
+      address: { city: "Aarhus" },
+      lastSeen: "2026-07-01",
+    });
+
+    expect(next).toBe(base);
+  });
 });
 
 describe("replace paths", () => {

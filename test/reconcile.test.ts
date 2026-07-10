@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMerger, DELETE, type Delta } from "../src/index.js";
+import { createMerger, DELETE, KeyfoldMergeError, type Delta } from "../src/index.js";
 
 interface Component {
   sku: string | number;
@@ -205,7 +205,7 @@ describe("ambiguity and failure safety", () => {
     const base = state();
     const snapshot = structuredClone(base);
 
-    expect(() => merge(base, { items } as unknown as Delta<State>)).toThrow();
+    expect(() => merge(base, { items } as unknown as Delta<State>)).toThrow(KeyfoldMergeError);
     expect(base).toEqual(snapshot);
   });
 
@@ -234,9 +234,9 @@ describe("ambiguity and failure safety", () => {
     ).toThrow(/duplicate identity/);
   });
 
-  test("deleting an absent item is a no-op", () => {
+  test("deleting an absent item is a no-op that keeps the base reference", () => {
     const base = state();
-    expect(merge(base, { items: [{ id: "missing", $delete: true }] })).toEqual(base);
+    expect(merge(base, { items: [{ id: "missing", $delete: true }] })).toBe(base);
   });
 
   test("rejects the reserved tombstone field in base data", () => {

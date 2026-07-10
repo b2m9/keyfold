@@ -1,3 +1,4 @@
+import { KeyfoldMergeError } from "./errors.js";
 import { isPlainObject } from "./objects.js";
 import type { PolicyNode } from "./paths.js";
 import { DELETE_TOKEN } from "./sentinels.js";
@@ -21,20 +22,23 @@ export function reconcile(
   context: FoldContext,
   path: string,
 ): readonly unknown[] {
+  // The delta is indexed and validated before any output exists: the
+  // immutability guarantee is the failure guarantee.
   const patches = indexDelta(delta, identityField, context.wireDeletes, path);
   const seenBaseIds = new Set<string | number>();
   const next: unknown[] = [];
+  let changed = false;
 
   for (const rawItem of base) {
     const { id, item } = readKeyedItem(rawItem, identityField, context.wireDeletes, path, "base");
     if (seenBaseIds.has(id)) {
-      throw new Error(`keyfold: duplicate identity ${show(id)} in base list at '${path}'`);
+      throw new KeyfoldMergeError(`duplicate identity ${show(id)} in base list at '${path}'`);
     }
     seenBaseIds.add(id);
 
     if (Object.hasOwn(item, "$delete")) {
-      throw new Error(
-        `keyfold: base item ${show(id)} at '${path}' contains the reserved '$delete' field`,
+      throw new KeyfoldMergeError(
+        `base item ${show(id)} at '${path}' contains the reserved '$delete' field`,
       );
     }
 
@@ -45,23 +49,28 @@ export function reconcile(
     }
 
     patches.delete(id);
-    if (!patch.tombstone) {
-      next.push(context.fold(item, patch.item, itemPolicy, `${path}[]`));
+    if (patch.tombstone) {
+      changed = true;
+      continue;
     }
+    const folded = context.fold(item, patch.item, itemPolicy, `${path}[]`);
+    if (!Object.is(folded, item)) changed = true;
+    next.push(folded);
   }
 
-  // An empty list delta still validates the touched base list, then keeps its
-  // reference. This preserves the cheap no-op without hiding corrupt ids.
-  if (delta.length === 0) return base;
-
   for (const patch of patches.values()) {
+    // A tombstone whose target is absent is a no-op; deletes stay idempotent.
     if (!patch.tombstone) {
       // Folding onto an empty base consumes nested operators in inserts too.
       next.push(context.fold(undefined, patch.item, itemPolicy, `${path}[]`));
+      changed = true;
     }
   }
 
-  return next;
+  // A no-op delta — empty, all-absent tombstones, or patches that restate
+  // current values — still validates the touched base list, then keeps its
+  // reference. This preserves the cheap no-op without hiding corrupt ids.
+  return changed ? next : base;
 }
 
 function indexDelta(
@@ -75,7 +84,10 @@ function indexDelta(
   for (const rawItem of delta) {
     const { id, item } = readKeyedItem(rawItem, identityField, wireDeletes, path, "delta");
     if (patches.has(id)) {
-      throw new Error(`keyfold: duplicate identity ${show(id)} in delta list at '${path}'`);
+      // No carve-out for tombstone+patch pairs: "delete then re-add" would
+      // hinge on implicit ordering. The item-swap spelling is replace:
+      // ['<list>[]'].
+      throw new KeyfoldMergeError(`duplicate identity ${show(id)} in delta list at '${path}'`);
     }
     patches.set(id, { item, tombstone: isTombstone(item, identityField, path) });
   }
@@ -91,43 +103,47 @@ function readKeyedItem(
   source: "base" | "delta",
 ): { id: string | number; item: Record<string, unknown> } {
   if (!isPlainObject(value)) {
-    throw new TypeError(
-      `keyfold: ${source} item at '${path}' is not an object with identity field '${identityField}'`,
+    throw new KeyfoldMergeError(
+      `${source} item at '${path}' is not an object with identity field '${identityField}'`,
     );
   }
   if (!Object.hasOwn(value, identityField)) {
-    throw new TypeError(
-      `keyfold: ${source} item at '${path}' has no identity field '${identityField}'`,
+    throw new KeyfoldMergeError(
+      `${source} item at '${path}' has no identity field '${identityField}'`,
     );
   }
 
   const id = value[identityField];
+  // Under the wire protocol the token cannot be an identity: the item fold
+  // would consume it as a field delete and emit an item with no identity.
   if (wireDeletes && id === DELETE_TOKEN) {
-    throw new TypeError(
-      `keyfold: identity field '${identityField}' at '${path}' cannot use the reserved wire token`,
+    throw new KeyfoldMergeError(
+      `identity field '${identityField}' at '${path}' cannot use the reserved wire token`,
     );
   }
+  // Map keying is SameValueZero; with NaN banned it behaves exactly like ===,
+  // so {id: 1} and {id: '1'} stay distinct items.
   if (typeof id === "string" || (typeof id === "number" && !Number.isNaN(id))) {
     return { id, item: value };
   }
 
-  throw new TypeError(
-    `keyfold: identity field '${identityField}' of ${source} item at '${path}' must be a string or number, got ${show(id)}`,
+  throw new KeyfoldMergeError(
+    `identity field '${identityField}' of ${source} item at '${path}' must be a string or number, got ${show(id)}`,
   );
 }
 
 function isTombstone(item: Record<string, unknown>, identityField: string, path: string): boolean {
   if (!Object.hasOwn(item, "$delete")) return false;
   if (item.$delete !== true) {
-    throw new TypeError(
-      `keyfold: '$delete' at '${path}' is reserved and must be true, got ${show(item.$delete)}`,
+    throw new KeyfoldMergeError(
+      `'$delete' at '${path}' is reserved and must be true, got ${show(item.$delete)}`,
     );
   }
 
   for (const key of Object.keys(item)) {
     if (key === identityField || key === "$delete") continue;
-    throw new Error(
-      `keyfold: tombstone at '${path}' must contain only '${identityField}' and '$delete'`,
+    throw new KeyfoldMergeError(
+      `tombstone at '${path}' must contain only '${identityField}' and '$delete'`,
     );
   }
 

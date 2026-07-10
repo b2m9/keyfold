@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMerger } from "../src/index.js";
+import { createMerger, KeyfoldConfigError } from "../src/index.js";
 
 describe("configuration validation", () => {
   test.each([
@@ -11,13 +11,13 @@ describe("configuration validation", () => {
     ["double item marker", { replace: ["items[][]"] }],
     ["unsafe segment", { replace: ["constructor.name"] }],
   ])("rejects a %s path", (_case, options) => {
-    expect(() => createMerger(options)).toThrow(TypeError);
+    expect(() => createMerger(options)).toThrow(KeyfoldConfigError);
   });
 
   test.each(["", "$delete", "__proto__", "constructor", "prototype", "id[]", "a.b"])(
     "rejects identity field %j",
     (identityField) => {
-      expect(() => createMerger({ keyBy: { items: identityField } })).toThrow(TypeError);
+      expect(() => createMerger({ keyBy: { items: identityField } })).toThrow(KeyfoldConfigError);
     },
   );
 
@@ -38,6 +38,11 @@ describe("configuration validation", () => {
     },
   ])("rejects a replace path that makes a keyBy policy unreachable", (options) => {
     expect(() => createMerger(options)).toThrow(/unreachable/);
+  });
+
+  test("rejects a replace path shadowed by a broader replace path", () => {
+    expect(() => createMerger({ replace: ["a", "a.b"] })).toThrow(/unreachable/);
+    expect(() => createMerger({ replace: ["a.b", "a"] })).toThrow(/unreachable/);
   });
 
   test("accepts the keyed-list item replacement idiom", () => {

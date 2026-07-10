@@ -9,7 +9,7 @@ import type { Delta, MergeOptions } from "./types.js";
  *
  * The returned function has no held state. It builds a result before
  * returning, so invalid input can throw without ever partially mutating the
- * base tree.
+ * base tree, and a merge that changes nothing returns `base` by reference.
  */
 export function createMerger<T, Atomic = never>(
   options: MergeOptions = {},
@@ -61,26 +61,31 @@ function foldObject(
   context: FoldContext,
   path: string,
 ): Record<string, unknown> {
-  const keys = enumerableOwnKeys(delta);
-  if (keys.length === 0) return base;
-
-  const next = copyPlainObject(base);
   const baseByKey = base as Record<PropertyKey, unknown>;
   const deltaByKey = delta as Record<PropertyKey, unknown>;
-  const nextByKey = next as Record<PropertyKey, unknown>;
+  // Copied lazily, on the first write that changes something, so a delta that
+  // changes nothing returns the base object by reference.
+  let next: Record<PropertyKey, unknown> | undefined;
 
-  for (const key of keys) {
+  for (const key of enumerableOwnKeys(delta)) {
     if (typeof key === "string" && UNSAFE_KEYS.has(key)) continue;
 
     const value = deltaByKey[key];
+    // undefined means "field not mentioned": spreading partials never clobbers.
     if (value === undefined) continue;
+
+    const hasBase = Object.hasOwn(base, key);
     if (value === DELETE || (context.wireDeletes && value === DELETE_TOKEN)) {
-      delete nextByKey[key];
+      if (hasBase) {
+        next ??= copyPlainObject(base) as Record<PropertyKey, unknown>;
+        delete next[key];
+      }
       continue;
     }
 
-    nextByKey[key] = fold(
-      Object.hasOwn(base, key) ? baseByKey[key] : undefined,
+    const baseValue = hasBase ? baseByKey[key] : undefined;
+    const folded = fold(
+      baseValue,
       value,
       // The policy ITEM edge is entered only by reconciliation. A literal
       // data key named '[]' and symbol keys must not inherit item policy.
@@ -88,7 +93,11 @@ function foldObject(
       context,
       typeof key === "string" ? (path === "" ? key : `${path}.${key}`) : `${path}[${String(key)}]`,
     );
+    if (!hasBase || !Object.is(folded, baseValue)) {
+      next ??= copyPlainObject(base) as Record<PropertyKey, unknown>;
+      next[key] = folded;
+    }
   }
 
-  return next;
+  return next ?? base;
 }

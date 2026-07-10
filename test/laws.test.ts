@@ -120,6 +120,20 @@ describe("algebraic laws", () => {
     );
   });
 
+  test("re-applying the same delta returns the same reference", () => {
+    // Stronger than value-idempotence: the second application writes only
+    // values that are already there, so nothing is copied and the previous
+    // result comes back by reference. A store can drop duplicate frames with
+    // one equality check.
+    fc.assert(
+      fc.property(baseArbitrary, deltaArbitrary, (base, delta) => {
+        const once = merge(base, delta);
+        expect(merge(once, delta)).toBe(once);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
   test("is deterministic", () => {
     fc.assert(
       fc.property(baseArbitrary, deltaArbitrary, (base, delta) => {
