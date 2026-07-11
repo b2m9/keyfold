@@ -188,7 +188,7 @@ All configuration is validated when the merger is created: bad grammar, reserved
 - Keyed lists reconcile by identity; survivors retain base order and inserts append.
 - Unkeyed arrays, scalars, and non-plain objects replace wholesale.
 - Object and keyed-list deltas use empty working containers when the base has the wrong shape. A no-op preserves the original value and reference; a real field or item produces the correctly shaped result.
-- New keyed items consume nested operators while retaining explicitly supplied empty containers.
+- New keyed items consume nested operators at interpreted positions while retaining explicitly supplied empty containers. A `replace` boundary or unkeyed array inside the item is still taken verbatim.
 - `__proto__`, `constructor`, and `prototype` keys in deltas are ignored.
 - The base is never mutated. A throw cannot leave a partial write behind.
 - A merge that changes nothing returns the base reference. Merged values count as unchanged when they are equal by value; replaced values count as unchanged only when they are the very same reference.
