@@ -143,6 +143,17 @@ describe("keyed-list reconciliation", () => {
     });
   });
 
+  test("preserves explicit empty containers in inserted items", () => {
+    const mergeUnknown = createMerger<Record<string, unknown>>({
+      keyBy: { items: "id", "items[].components": "sku" },
+    });
+    const next = mergeUnknown({ items: [] }, {
+      items: [{ id: "a", metadata: {}, components: [] }],
+    } as Delta<Record<string, unknown>>);
+
+    expect(next.items).toEqual([{ id: "a", metadata: {}, components: [] }]);
+  });
+
   test("reconciles a keyed delta against an empty list after a type mismatch", () => {
     const mergeUnknown = createMerger<Record<string, unknown>>({ keyBy: { items: "id" } });
     const next = mergeUnknown({ items: "wrong shape" }, {
@@ -237,6 +248,27 @@ describe("ambiguity and failure safety", () => {
   test("deleting an absent item is a no-op that keeps the base reference", () => {
     const base = state();
     expect(merge(base, { items: [{ id: "missing", $delete: true }] })).toBe(base);
+  });
+
+  test.each([
+    ["an absent field", {}],
+    ["an undefined field", { items: undefined }],
+    ["a wrong-shaped field", { items: "wrong shape" }],
+  ])("preserves %s for keyed-list no-op deltas", (_case, base) => {
+    const mergeUnknown = createMerger<Record<string, unknown>>({ keyBy: { items: "id" } });
+    const deltas = [[], [{ id: "missing", $delete: true }]];
+
+    for (const items of deltas) {
+      expect(mergeUnknown(base, { items } as Delta<Record<string, unknown>>)).toBe(base);
+    }
+  });
+
+  test("materializes an absent keyed list for a real insert", () => {
+    const mergeUnknown = createMerger<Record<string, unknown>>({ keyBy: { items: "id" } });
+    const base = {};
+    const delta = { items: [{ id: "a", value: 1 }] } as Delta<Record<string, unknown>>;
+
+    expect(mergeUnknown(base, delta)).toEqual({ items: [{ id: "a", value: 1 }] });
   });
 
   test("rejects the reserved tombstone field in base data", () => {

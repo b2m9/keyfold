@@ -86,6 +86,19 @@ describe("object folding", () => {
 
     expect(next.value).toEqual({ kept: 1 });
   });
+
+  test.each([
+    ["an absent field", {}],
+    ["an undefined field", { value: undefined }],
+    ["a wrong-shaped field", { value: 5 }],
+  ])("does not materialize an object for no-op deltas against %s", (_case, base) => {
+    const mergeUnknown = createMerger<Record<string, unknown>>();
+    const deltas = [{ value: {} }, { value: { removed: DELETE } }] as Delta<
+      Record<string, unknown>
+    >[];
+
+    for (const delta of deltas) expect(mergeUnknown(base, delta)).toBe(base);
+  });
 });
 
 describe("immutability and structural sharing", () => {
@@ -120,6 +133,14 @@ describe("immutability and structural sharing", () => {
 });
 
 describe("replace paths", () => {
+  test("materializes an explicitly replaced empty object", () => {
+    const merge = createMerger<Record<string, unknown>>({ replace: ["settings"] });
+    const settings = {};
+    const next = merge({}, { settings });
+
+    expect(next.settings).toBe(settings);
+  });
+
   test("swap an object subtree wholesale", () => {
     const merge = createMerger<Profile>({ replace: ["address"] });
     const address = { line1: "1 New Road", city: "Berlin" };
