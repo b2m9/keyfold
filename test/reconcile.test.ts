@@ -211,6 +211,7 @@ describe("ambiguity and failure safety", () => {
     ],
     ["mixed tombstone", [{ id: "a", $delete: true, quantity: 2 }]],
     ["mixed tombstone with undefined field", [{ id: "a", $delete: true, quantity: undefined }]],
+    ["mixed tombstone with symbol-keyed field", [{ id: "a", $delete: true, [Symbol("patch")]: 2 }]],
     ["non-true tombstone", [{ id: "a", $delete: false }]],
   ])("throws for %s without mutating base", (_case, items) => {
     const base = state();
@@ -269,6 +270,16 @@ describe("ambiguity and failure safety", () => {
     const delta = { items: [{ id: "a", value: 1 }] } as Delta<Record<string, unknown>>;
 
     expect(mergeUnknown(base, delta)).toEqual({ items: [{ id: "a", value: 1 }] });
+  });
+
+  test("ignores unsafe keys on a tombstone like on any other delta object", () => {
+    const base = state();
+    const wireTombstone: unknown = JSON.parse('{"id":"a","$delete":true,"__proto__":{"x":1}}');
+    const next = merge(base, {
+      items: [wireTombstone, { id: "b", $delete: true, constructor: { x: 1 } }],
+    } as unknown as Delta<State>);
+
+    expect(next.items).toEqual([]);
   });
 
   test("rejects the reserved tombstone field in base data", () => {

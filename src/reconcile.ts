@@ -1,5 +1,5 @@
 import { KeyfoldMergeError } from "./errors.js";
-import { isPlainObject } from "./objects.js";
+import { enumerableOwnKeys, isPlainObject, UNSAFE_KEYS } from "./objects.js";
 import type { PolicyNode } from "./paths.js";
 import { DELETE_TOKEN } from "./sentinels.js";
 
@@ -143,8 +143,12 @@ function isTombstone(item: Record<string, unknown>, identityField: string, path:
     );
   }
 
-  for (const key of Object.keys(item)) {
+  // Purity is judged by the same key set the fold would merge: symbol keys
+  // are patch data, while unsafe keys are ignored everywhere and so cannot
+  // taint a tombstone.
+  for (const key of enumerableOwnKeys(item)) {
     if (key === identityField || key === "$delete") continue;
+    if (typeof key === "string" && UNSAFE_KEYS.has(key)) continue;
     throw new KeyfoldMergeError(
       `tombstone at '${path}' must contain only '${identityField}' and '$delete'`,
     );
