@@ -41,7 +41,7 @@
     "test": "vp test run",
     "test:watch": "vp test",
     "check": "vp check && vp test run && vp run check:exports",
-    "check:exports": "vp pack && vp exec publint && vp exec attw --pack --profile esm-only .",
+    "check:exports": "vp run build && vp exec publint && vp exec attw --pack --profile esm-only .",
     "prepack": "vp run build"
   },
   "devDependencies": {
