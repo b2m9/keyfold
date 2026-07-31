@@ -7,19 +7,6 @@ approve the staged package on npm with 2FA.
 The workflow supports stable releases. Prereleases need an explicit npm dist-tag
 and are not covered by this process.
 
-## One-time setup
-
-After `publish.yml` is on the default branch:
-
-1. Create the `npm-publish` environment in the GitHub repository.
-2. Configure the npm trusted publisher for `b2m9/keyfold`:
-   - Workflow: `publish.yml`
-   - Environment: `npm-publish`
-   - Allowed action: `npm stage publish`
-3. Require 2FA and disallow tokens in the package's npm publishing settings.
-4. Protect release tags and require Code Owner approval for workflow changes in
-   the repository ruleset.
-
 ## Release checklist
 
 1. Make sure `main` is green and contains the release commit.
