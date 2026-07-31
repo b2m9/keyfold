@@ -10,8 +10,8 @@ compiler cannot enforce and how changes are made here.
 
 ESM-only, Node >=22. The project uses Vite+ (`vp`) with pnpm. Run
 `vp test run` while iterating and `vp run check` before handing off; the full
-check verifies formatting, lints, type-checks, tests, builds, and validates the published
-package and types.
+check verifies formatting, lints, type-checks, tests, builds, and validates the
+published package and types.
 
 ## Constraints to preserve
 
