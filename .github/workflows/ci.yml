@@ -13,7 +13,9 @@ jobs:
   check:
     strategy:
       matrix:
-        node-version: [22, 24, 26]
+        # The engines floor and the newest LTS. The floor from package.json.
+        # Versions between the two are bracketed, so they are not tested.
+        node-version: [22, 26]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
