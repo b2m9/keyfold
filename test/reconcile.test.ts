@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 import { createMerger, DELETE, KeyfoldMergeError, type Delta } from "../src/index.js";
 
 interface Component {

@@ -8,9 +8,10 @@ compiler cannot enforce and how changes are made here.
 
 ## Toolchain
 
-ESM-only, Node >=22. The project uses npm, TypeScript, Vitest, Oxlint, and
-Oxfmt. Run `npm test` while iterating and `npm run check` before handing off;
-the full check also builds and validates the published package and types.
+ESM-only, Node >=22. The project uses Vite+ (`vp`) with pnpm. Run
+`vp test run` while iterating and `vp run check` before handing off; the full
+check formats, lints, type-checks, tests, builds, and validates the published
+package and types.
 
 ## Constraints to preserve
 

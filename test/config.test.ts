@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { createMerger, KeyfoldConfigError } from "../src/index.js";
+import { describe, expect, test } from "vite-plus/test";
+import { createMerger, KeyfoldConfigError, type MergeOptions } from "../src/index.js";
 
 describe("configuration validation", () => {
   test.each([
@@ -29,16 +29,21 @@ describe("configuration validation", () => {
     expect(() => createMerger({ replace: ["a.b", "a.b"] })).toThrow(/duplicate/);
   });
 
-  test.each([
+  const unreachableOptions: MergeOptions[] = [
     { keyBy: { "order.items": "id" }, replace: ["order.items"] },
     { keyBy: { "order.items": "id" }, replace: ["order"] },
     {
       keyBy: { "order.items": "id", "order.items[].components": "sku" },
       replace: ["order.items[]"],
     },
-  ])("rejects a replace path that makes a keyBy policy unreachable", (options) => {
-    expect(() => createMerger(options)).toThrow(/unreachable/);
-  });
+  ];
+
+  test.each(unreachableOptions)(
+    "rejects a replace path that makes a keyBy policy unreachable",
+    (options) => {
+      expect(() => createMerger(options)).toThrow(/unreachable/);
+    },
+  );
 
   test("rejects a replace path shadowed by a broader replace path", () => {
     expect(() => createMerger({ replace: ["a", "a.b"] })).toThrow(/unreachable/);

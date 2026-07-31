@@ -7,12 +7,12 @@ approve the staged package on npm with 2FA.
 ## Release checklist
 
 1. Make sure `main` is green and contains the release commit.
-2. Bump `package.json` and `package-lock.json` to the next version.
+2. Bump `package.json` and `pnpm-lock.yaml` to the next version.
 3. Run:
 
    ```sh
-   npm ci
-   npm run check
+   vp install --frozen-lockfile
+   vp run check
    npm pack --dry-run
    ```
 
