@@ -1,6 +1,6 @@
 {
   "name": "@b2m9/keyfold",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fold partial deltas into plain state trees with identity-keyed list reconciliation.",
   "keywords": [
     "delta",
