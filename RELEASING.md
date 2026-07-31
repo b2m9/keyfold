@@ -7,7 +7,7 @@ approve the staged package on npm with 2FA.
 ## Release checklist
 
 1. Make sure `main` is green and contains the release commit.
-2. Bump `package.json` and `pnpm-lock.yaml` to the next version.
+2. Bump `package.json` to the next version.
 3. Run:
 
    ```sh
