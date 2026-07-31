@@ -4,9 +4,6 @@ This package uses npm trusted publishing with GitHub Actions. The workflow stage
 new versions on npm, but does not make them live. A maintainer must review and
 approve the staged package on npm with 2FA.
 
-The workflow supports stable releases. Prereleases need an explicit npm dist-tag
-and are not covered by this process.
-
 ## Release checklist
 
 1. Make sure `main` is green and contains the release commit.
