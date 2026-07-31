@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 import { createMerger, DELETE, type Delta } from "../src/index.js";
 
 interface Profile {
@@ -197,7 +197,7 @@ describe("plain-object safety", () => {
 
   test("does not treat inherited properties as base data", () => {
     const next = merge({}, { toString: { custom: true } } as Delta<Record<string, unknown>>);
-    expect(next.toString).toEqual({ custom: true });
+    expect(next["toString"]).toEqual({ custom: true });
   });
 });
 

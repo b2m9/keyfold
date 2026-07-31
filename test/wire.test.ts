@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 import { createMerger, DELETE, DELETE_TOKEN, type Delta } from "../src/index.js";
 
 interface State {
