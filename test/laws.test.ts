@@ -128,8 +128,8 @@ describe("algebraic laws", () => {
   test("re-applying the same delta returns the same reference", () => {
     // Stronger than value-idempotence: the second application writes only
     // values that are already there, so nothing is copied and the previous
-    // result comes back by reference. A store can drop duplicate frames with
-    // one equality check.
+    // result comes back by reference. This applies the same delta object
+    // twice; the law below marks where a separately parsed copy stops.
     fc.assert(
       fc.property(baseArbitrary, deltaArbitrary, (base, delta) => {
         const once = merge(base, delta);
@@ -137,6 +137,37 @@ describe("algebraic laws", () => {
       }),
       { numRuns: 200 },
     );
+  });
+
+  test("a re-decoded frame keeps the reference only for Object.is-equal replacements", () => {
+    // Pins the documented limit rather than a desirable behavior. Merged
+    // values are judged by value, so re-decoding them costs nothing. A
+    // replacement is unchanged only under Object.is, which ordinary JSON
+    // parsing satisfies for primitives and never for objects or arrays.
+    const base: Shape = { meta: {}, items: [] };
+    const reapply = (frame: string) => {
+      const parse = () => JSON.parse(frame) as Delta<Shape>;
+      const once = merge(base, parse());
+      return { once, again: merge(once, parse()) };
+    };
+
+    const merged = reapply('{"title":"t","items":[{"id":"a"}]}');
+    expect(merged.again).toBe(merged.once);
+
+    // An unkeyed array and a configured replace path, so neither route to a
+    // replacement can start comparing by value without failing here.
+    for (const frame of ['{"tags":["x"]}', '{"meta":{"version":1}}']) {
+      const { once, again } = reapply(frame);
+      expect(again).not.toBe(once);
+      expect(again).toEqual(once);
+    }
+
+    // A primitive replacement survives decoding, so the line falls at what
+    // parsing allocates rather than at replacement itself.
+    const mergePrimitive = createMerger<{ meta: string }>({ replace: ["meta"] });
+    const parsePrimitive = () => JSON.parse('{"meta":"new"}') as Delta<{ meta: string }>;
+    const primitive = mergePrimitive({ meta: "old" }, parsePrimitive());
+    expect(mergePrimitive(primitive, parsePrimitive())).toBe(primitive);
   });
 
   test("is deterministic", () => {

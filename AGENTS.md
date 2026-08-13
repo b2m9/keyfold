@@ -21,7 +21,10 @@ published package and types.
 - **Structural sharing is observable.** Semantic no-ops return `base` by
   reference, and untouched sibling branches retain their references.
 - **The fold stays deterministic and idempotent.** Reapplying a valid delta
-  returns the previous result by reference.
+  returns the previous result by reference. A separately decoded copy is
+  reference-idempotent only when every replacement value is unchanged under
+  `Object.is`; ordinary JSON parsing allocates fresh object and array
+  replacements. Do not promise more than that.
 - **Replacement is a boundary.** Unkeyed arrays, non-plain objects, and paths
   configured with `replace` swap wholesale. Do not traverse, clone, sanitize,
   or interpret operators inside them.
