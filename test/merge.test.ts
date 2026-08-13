@@ -219,9 +219,10 @@ describe("plain-object safety", () => {
   });
 
   test("materializes a container of only unsafe keys as a safe empty object", () => {
-    // Unsafe keys are ignored everywhere, so a container holding nothing else
-    // is empty and materializes like any other. What lands is a clean object,
-    // never the prototype the delta tried to smuggle in.
+    // Unsafe keys are skipped wherever a delta object is folded, so a
+    // container holding nothing else is empty and materializes like any
+    // other. What lands is a clean object, never the prototype the delta
+    // tried to smuggle in.
     const delta = JSON.parse('{"value":{"__proto__":{"polluted":true}}}') as Delta<
       Record<string, unknown>
     >;
@@ -230,6 +231,24 @@ describe("plain-object safety", () => {
     expect(next).toEqual({ value: {} });
     expect(Object.getPrototypeOf(next.value)).toBe(Object.prototype);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  test("never reads an unsafe key, not even to decide whether a container is empty", () => {
+    // Deciding emptiness must not become a second path that follows a key the
+    // fold itself refuses to follow.
+    let reads = 0;
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, "__proto__", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return { polluted: true };
+      },
+    });
+
+    expect(merge({}, { value: hostile } as Delta<Record<string, unknown>>)).toEqual({ value: {} });
+    expect(reads).toBe(0);
   });
 
   test("preserves the prototype of a null-prototype plain object", () => {

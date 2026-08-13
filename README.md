@@ -190,7 +190,7 @@ All configuration is validated when the merger is created: bad grammar, reserved
 - An empty object or keyed list in a delta is data: it ensures the field exists, replacing an absent or wrong-shaped value with an empty container. A container is empty when it mentions no field the fold interprets, so `{}` and `{ field: undefined }` mean the same thing here and survive JSON alike.
 - An operator that finds nothing to do is not data. Deleting an absent field, or tombstoning an absent item, preserves the original value and reference all the way up the tree, and never conjures a container to operate on.
 - New keyed items are folded onto nothing, so they follow those same rules. A `replace` boundary or unkeyed array inside the item is taken verbatim.
-- `__proto__`, `constructor`, and `prototype` keys in deltas are ignored.
+- `__proto__`, `constructor`, and `prototype` keys in deltas are ignored wherever a delta object is folded, and never read. Inside a replaced value they are data like anything else.
 - The base is never mutated. A throw cannot leave a partial write behind.
 - A merge that changes nothing returns the base reference. Merged values count as unchanged when they are equal by value; replaced values count as unchanged only when they are the very same reference.
 - Every valid delta is deterministic and idempotent: re-applying the same delta returns the previous result by reference, so a store can drop duplicate frames with one equality check.

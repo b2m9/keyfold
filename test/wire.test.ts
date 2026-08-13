@@ -59,6 +59,24 @@ describe("wire deletes", () => {
     expect(createMerger<State>({ ...options, wireDeletes: true })(base, delta).items).toEqual([]);
   });
 
+  test("a container of only tokens is an operator that finds nothing, not an empty container", () => {
+    // The token is a field operation wherever it is interpreted, so it keeps
+    // the container non-empty and the miss collapses to the base reference.
+    const merge = createMerger<State>({ wireDeletes: true });
+    const delta = { missing: { absent: DELETE_TOKEN } } as unknown as Delta<State>;
+
+    expect(merge(base, delta)).toBe(base);
+  });
+
+  test("an uninterpreted token is ordinary data, so its container is not empty", () => {
+    // With wireDeletes off the token is a string, which is a real write and
+    // materializes the field it lands in.
+    const merge = createMerger<State>();
+    const delta = { missing: { absent: DELETE_TOKEN } } as unknown as Delta<State>;
+
+    expect(merge(base, delta)).toEqual({ ...base, missing: { absent: DELETE_TOKEN } });
+  });
+
   test("rejects DELETE_TOKEN as an identity when wire interpretation is enabled", () => {
     const merge = createMerger<State>({ keyBy: { items: "id" }, wireDeletes: true });
     expect(() => merge(base, { items: [{ id: DELETE_TOKEN, label: "ambiguous" }] })).toThrow(

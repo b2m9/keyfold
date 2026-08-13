@@ -44,7 +44,10 @@ function fold(
         context,
         path,
       );
-      return finishContainerFold(base, workingBase, folded, delta.length === 0);
+      // A synthetic container is scaffolding, not a write, so item operations
+      // that all found nothing collapse back to the original value. An empty
+      // list is not a failed operation: it is data, and it materializes.
+      return Object.is(folded, workingBase) && delta.length > 0 ? base : folded;
     }
     return delta;
   }
@@ -52,7 +55,8 @@ function fold(
   if (isPlainObject(delta)) {
     const workingBase = isPlainObject(base) ? base : {};
     const folded = foldObject(workingBase, delta, policy, context, path);
-    return finishContainerFold(base, workingBase, folded, !mentionsAnyField(delta));
+    // Emptiness only decides the collapse, so it is asked about last.
+    return Object.is(folded, workingBase) && mentionsAnyField(delta) ? base : folded;
   }
 
   return delta;
@@ -72,7 +76,7 @@ function foldObject(
   let next: Record<PropertyKey, unknown> | undefined;
 
   for (const key of enumerableOwnKeys(delta)) {
-    if (typeof key === "string" && UNSAFE_KEYS.has(key)) continue;
+    if (isUnsafeKey(key)) continue;
 
     const value = deltaByKey[key];
     // undefined means "field not mentioned": spreading partials never clobbers.
@@ -108,29 +112,23 @@ function foldObject(
   return next ?? base;
 }
 
+/** Shared with the fold above so the two can never disagree about a key. */
+function isUnsafeKey(key: PropertyKey): boolean {
+  return typeof key === "string" && UNSAFE_KEYS.has(key);
+}
+
 /**
  * True when the delta object spells at least one field the fold interprets.
  *
- * Keys the fold always skips do not count, so a container is empty in memory
- * exactly when it is empty on the wire: `JSON.stringify` erases `undefined`
- * fields, and unsafe keys are ignored everywhere.
+ * Keys the fold skips do not count, so a JSON-shaped delta is empty in memory
+ * exactly when it is empty on the wire: `JSON.stringify` erases the
+ * `undefined` fields, and unsafe keys are skipped at both ends.
+ *
+ * The unsafe test precedes the read: a key the fold refuses to follow must
+ * not be followed here either, however it is spelled.
  */
 function mentionsAnyField(delta: Record<string, unknown>): boolean {
   const deltaByKey = delta as Record<PropertyKey, unknown>;
 
-  return enumerableOwnKeys(delta).some(
-    (key) => deltaByKey[key] !== undefined && !(typeof key === "string" && UNSAFE_KEYS.has(key)),
-  );
-}
-
-function finishContainerFold(
-  base: unknown,
-  workingBase: unknown,
-  folded: unknown,
-  deltaIsEmpty: boolean,
-): unknown {
-  // A synthetic container is scaffolding, not a write, so an operation that
-  // found nothing to do collapses back to the original value. An empty
-  // container is not a failed operation: it is data, and it materializes.
-  return !deltaIsEmpty && Object.is(folded, workingBase) ? base : folded;
+  return enumerableOwnKeys(delta).some((key) => !isUnsafeKey(key) && deltaByKey[key] !== undefined);
 }
