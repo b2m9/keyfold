@@ -46,8 +46,12 @@ published package and types.
 - **Unsafe keys are never followed.** Recursive object folds ignore
   `__proto__`, `constructor`, and `prototype` from deltas, including when
   deciding whether a container is empty. Never read one to reach that decision.
-- **Work remains delta-proportional.** Do not add a full-state traversal;
-  touched keyed lists are the deliberate O(list) exception.
+- **Never recursively traverse an unmentioned subtree.** Do not add a
+  full-state traversal. Cost still scales with the containers touched: a
+  recursively merged plain object whose result changes is shallow-copied
+  across its own enumerable fields, and keyed reconciliation indexes every
+  delta item, scans every base item, and builds a candidate list. Both are
+  deliberate; neither may grow into a state walk.
 
 ## Design principles
 
