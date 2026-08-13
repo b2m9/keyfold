@@ -90,6 +90,8 @@ const merge = createMerger<State>({
 });
 ```
 
+`options` and `keyBy` must be plain objects from the current realm, or null-prototype records; `replace` must be a dense array of strings. Maps, class instances, foreign-realm records, and holes in `replace` all throw `KeyfoldConfigError` when the merger is created, so a `Map` of paths is rejected rather than read as an empty policy. Normalize foreign configuration with `structuredClone` first; a spread only reaches the outermost container.
+
 `keyBy` maps a list path to its identity field. Identity values must be stable, unique strings or numbers. Matching is strict, so `1` and `"1"` are different items, while `0` and `""` are valid identities. Missing, duplicate, `NaN`, and non-string/non-number identities throw.
 
 `replace` makes a path swap wholesale instead of deep-merging or reconciling. A wholesale swap never recurses, so `createMerger` rejects any policy nested below a replaced path. The `"order.items[]"` form is the item-swap idiom: the list still matches items by identity, but each matched item is replaced by its incoming value instead of merged:
