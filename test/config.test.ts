@@ -1,6 +1,22 @@
 import { describe, expect, test } from "vite-plus/test";
 import { createMerger, KeyfoldConfigError, type MergeOptions } from "../src/index.js";
 
+/** A `replace` array whose last index is a hole rather than a value. */
+function withTrailingHole(...paths: string[]): unknown[] {
+  const sparse: unknown[] = [...paths];
+  sparse.length = paths.length + 1;
+  return sparse;
+}
+
+/** The same array, with the hole resolving to an inherited value instead. */
+function withInheritedHole(...paths: string[]): unknown[] {
+  const sparse = withTrailingHole(...paths);
+  const donor: unknown[] = [];
+  donor[paths.length] = "injected.path";
+  Object.setPrototypeOf(sparse, donor);
+  return sparse;
+}
+
 describe("configuration validation", () => {
   test.each([
     ["empty", { keyBy: { "": "id" } }],
@@ -69,5 +85,37 @@ describe("configuration validation", () => {
 
   test("rejects a non-boolean wireDeletes value from untyped JavaScript", () => {
     expect(() => createMerger({ wireDeletes: "yes" } as never)).toThrow(/boolean/);
+  });
+
+  test.each([
+    ["null options", null],
+    ["string options", "items"],
+    ["array options", []],
+    ["Map options", new Map()],
+    ["null keyBy", { keyBy: null }],
+    ["array keyBy", { keyBy: [] }],
+    ["Map keyBy", { keyBy: new Map([["items", "id"]]) }],
+    ["string replace", { replace: "items" }],
+    ["non-string replace path", { replace: [1] }],
+    // A hole is skipped by `map` but visited by `for...of`. Placing one after
+    // a valid path also proves no policy compiles before the array is refused.
+    ["trailing hole in replace", { replace: withTrailingHole("a.b") }],
+    // Validation reads own indices, so an inherited value at the missing index
+    // cannot disguise the hole as a path the caller supplied.
+    ["hole shadowed by an inherited path", { replace: withInheritedHole("a.b") }],
+  ])("rejects %s from untyped JavaScript", (_case, options) => {
+    expect(() => createMerger(options as never)).toThrow(KeyfoldConfigError);
+  });
+
+  test("names a hole rather than reporting an undefined path", () => {
+    expect(() => createMerger({ replace: withTrailingHole("a.b") } as never)).toThrow(/dense/);
+    expect(() => createMerger({ replace: ["a.b", undefined] } as never)).toThrow(/got undefined/);
+  });
+
+  test("accepts a null-prototype options record", () => {
+    const options = Object.assign(Object.create(null) as MergeOptions, {
+      keyBy: { items: "id" },
+    });
+    expect(() => createMerger(options)).not.toThrow();
   });
 });

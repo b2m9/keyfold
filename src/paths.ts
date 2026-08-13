@@ -1,5 +1,5 @@
 import { KeyfoldConfigError } from "./errors.js";
-import { UNSAFE_KEYS } from "./objects.js";
+import { isPlainObject, UNSAFE_KEYS } from "./objects.js";
 import type { MergeOptions } from "./types.js";
 
 /** The policy-tree edge used when recursion enters a keyed-list item. */
@@ -23,8 +23,20 @@ const RESERVED_IDENTITY_FIELDS = new Set(["$delete", ...UNSAFE_KEYS]);
 
 /** Validate and compile path strings before any state is merged. */
 export function compileOptions(options: MergeOptions): CompiledOptions {
+  // Container shapes are checked before any field is parsed, so a malformed
+  // container reports KeyfoldConfigError rather than a native TypeError from
+  // an internal call site, or a policy that is silently dropped.
+  if (!isPlainObject(options as unknown)) {
+    throw new KeyfoldConfigError("options must be a plain object");
+  }
   if (options.wireDeletes !== undefined && typeof options.wireDeletes !== "boolean") {
     throw new KeyfoldConfigError("wireDeletes must be a boolean");
+  }
+  if (options.keyBy !== undefined && !isPlainObject(options.keyBy)) {
+    throw new KeyfoldConfigError("keyBy must be a plain object mapping paths to identity fields");
+  }
+  if (options.replace !== undefined && !Array.isArray(options.replace)) {
+    throw new KeyfoldConfigError("replace must be an array of paths");
   }
 
   const root: PolicyNode = {};
@@ -33,10 +45,25 @@ export function compileOptions(options: MergeOptions): CompiledOptions {
     field,
     segments: parsePath(path, "keyBy"),
   }));
-  const replacePolicies = (options.replace ?? []).map((path) => ({
-    path,
-    segments: parsePath(path, "replace"),
-  }));
+  // Density is checked per index because each shorthand loses a hole its own
+  // way: `map` skips holes, leaving a sparse array for the `for...of` loops
+  // below to read `undefined` from; `Array.from` defers to a custom
+  // `Symbol.iterator`, which can omit the hole and yield a shorter dense array
+  // that compiles cleanly; and a bare index read resolves the hole up the
+  // prototype chain, compiling a path the caller never wrote. Only an own
+  // property is a path, the rule the fold already applies to data.
+  const replacePaths = options.replace ?? [];
+  const replacePolicies: { path: string; segments: string[] }[] = [];
+  for (let index = 0; index < replacePaths.length; index += 1) {
+    if (!Object.hasOwn(replacePaths, index)) {
+      throw new KeyfoldConfigError(`replace must be a dense array; index ${index} is a hole`);
+    }
+    const path: unknown = replacePaths[index];
+    if (typeof path !== "string") {
+      throw new KeyfoldConfigError(`replace paths must be strings, got ${typeof path}`);
+    }
+    replacePolicies.push({ path, segments: parsePath(path, "replace") });
+  }
 
   for (const policy of keyPolicies) {
     validateIdentityField(policy.path, policy.field);
