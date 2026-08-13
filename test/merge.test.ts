@@ -133,6 +133,23 @@ describe("object folding", () => {
     },
   );
 
+  test("does not materialize an object for a symbol-keyed operator that finds nothing", () => {
+    // DELETE is interpreted at any merged object-field position, including an
+    // own enumerable symbol key. A miss there is therefore an operation that
+    // collapses, not the empty container that classifying a delta by its
+    // string keys alone would see.
+    const removed = Symbol("removed");
+    type State = { value?: number | { [removed]?: string } };
+    const mergeUnion = createMerger<State>();
+    const delta: Delta<State> = { value: { [removed]: DELETE } };
+    const absent: State = {};
+    const wrongShaped: State = { value: 5 };
+
+    expect(mergeUnion(absent, delta)).toBe(absent);
+    // The miss must not swap a live value for the container it never wrote.
+    expect(mergeUnion(wrongShaped, delta)).toBe(wrongShaped);
+  });
+
   test.each([
     ["an absent field", {}],
     ["an undefined field", { value: undefined }],
