@@ -70,6 +70,9 @@ const deltaArbitrary = fc.record(
   {
     title: fc.oneof(fc.string(), fc.constant(DELETE)),
     meta: fc.record({ version: fc.integer(), note: fc.string() }, { requiredKeys: [] }),
+    // Optional in the base and able to generate '{}', so every law below sees
+    // an empty container materialize over an absent field.
+    profile: fc.record({ nickname: fc.string() }, { requiredKeys: [] }),
     tags: fc.array(fc.string()),
     items: fc.uniqueArray(itemPatch, { selector: (value) => value.id }),
   },

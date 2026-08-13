@@ -38,8 +38,8 @@ published package and types.
 - **An empty container is data; a missed operator is not.** An empty object or
   keyed list ensures its field exists, at every position. An operator that
   finds nothing to do collapses to the base reference and never conjures a
-  container. Emptiness counts the fields the fold interprets, so a delta means
-  the same thing in memory as it does after a JSON round trip.
+  container. Emptiness counts the fields the fold interprets, so a JSON-safe
+  delta means the same thing in memory as it does after a round trip.
 - **Unsafe keys are never followed.** Recursive object folds ignore
   `__proto__`, `constructor`, and `prototype` from deltas, including when
   deciding whether a container is empty. Never read one to reach that decision.
