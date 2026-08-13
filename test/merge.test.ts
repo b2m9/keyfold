@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, test } from "vite-plus/test";
 import { createMerger, DELETE, type Delta } from "../src/index.js";
 
@@ -60,6 +61,20 @@ describe("object folding", () => {
     const next = mergeUnknown({ value: { year: 2025 } }, { value: timestamp });
 
     expect(next.value).toBe(timestamp);
+  });
+
+  test("replaces records built in another realm", () => {
+    // Pins the documented realm limit rather than a desirable behavior. This
+    // record is opaque only because its Object.prototype is not ours, and no
+    // reliable test tells it apart from a class instance.
+    const mergeUnknown = createMerger<Record<string, unknown>>();
+    const foreign: unknown = runInNewContext("({ city: 'Copenhagen' })");
+    const next = mergeUnknown(
+      { address: { line1: "5 Main St", city: "Aarhus" } },
+      { address: foreign },
+    );
+
+    expect(next.address).toBe(foreign);
   });
 
   test("preserves and merges own enumerable symbol keys", () => {

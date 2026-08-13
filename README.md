@@ -214,6 +214,8 @@ Identity fields are the caller's central responsibility: they must remain stable
 
 Inputs are assumed to be finite, JSON-shaped trees. A cyclic base or delta is outside the contract and overflows the call stack; `keyfold` spends no cycles detecting it.
 
+Inputs are also assumed to come from one JavaScript realm. A plain object is one carrying this realm's `Object.prototype`, or none at all; a record built in a `vm` context or an iframe carries that realm's `Object.prototype` instead, so `keyfold` reads it as an opaque value and replaces wholesale, dropping the fields the delta leaves unmentioned. No test reliably separates such a record from a class instance, because every available signal is either realm-scoped or writable by the object's author. Pass foreign data through `structuredClone` to bring it into the receiving realm before merging.
+
 ## License
 
 MIT © 2026 Bob Massarczyk
