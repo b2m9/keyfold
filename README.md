@@ -193,7 +193,7 @@ All configuration is validated when the merger is created: bad grammar, reserved
 - `__proto__`, `constructor`, and `prototype` keys in deltas are ignored wherever a delta object is folded, and never read. Inside a replaced value they are data like anything else.
 - The base is never mutated. A throw cannot leave a partial write behind.
 - A merge that changes nothing returns the base reference. Merged values count as unchanged when they are equal by value; replaced values count as unchanged only when they are the very same reference.
-- Every valid delta is deterministic and idempotent: re-applying the same delta returns the previous result by reference, so a store can drop duplicate frames with one equality check.
+- Every valid delta is deterministic and idempotent: re-applying the same delta object returns the previous result by reference. A separately decoded frame keeps that reference only when every replacement value is unchanged under `Object.is`. Ordinary JSON parsing satisfies that for primitives but allocates fresh objects and arrays, so a store can drop duplicate frames with one equality check only while none of them replace with an object or an array.
 
 Replaced values, unkeyed arrays, and non-plain objects are taken as-is, never scanned or sanitized; that is what keeps replacement cheap. A `DELETE` or `$delete` inside such a value is not an operator, just data the caller put there.
 
