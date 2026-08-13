@@ -5,6 +5,16 @@ import { DELETE, DELETE_TOKEN } from "./sentinels.js";
 import type { Delta, MergeOptions } from "./types.js";
 
 /**
+ * Reported by the object fold when the delta spelled no field it interprets.
+ *
+ * Such a delta is an empty container rather than an operation, so it is data:
+ * it materializes its field instead of collapsing. One pass decides this,
+ * because only the fold itself knows which keys it skipped and it must not
+ * read a key twice to answer the question.
+ */
+const UNMENTIONED = Symbol("unmentioned");
+
+/**
  * Configure an immutable delta fold for one state shape.
  *
  * The returned function has no held state. It builds a result before
@@ -55,8 +65,11 @@ function fold(
   if (isPlainObject(delta)) {
     const workingBase = isPlainObject(base) ? base : {};
     const folded = foldObject(workingBase, delta, policy, context, path);
-    // Emptiness only decides the collapse, so it is asked about last.
-    return Object.is(folded, workingBase) && mentionsAnyField(delta) ? base : folded;
+    // An empty container is data, so it keeps the container it was folded
+    // onto. Otherwise a synthetic container that took no write is scaffolding
+    // from an operation that found nothing, and collapses back.
+    if (folded === UNMENTIONED) return workingBase;
+    return Object.is(folded, workingBase) ? base : folded;
   }
 
   return delta;
@@ -68,20 +81,26 @@ function foldObject(
   policy: PolicyNode | undefined,
   context: FoldContext,
   path: string,
-): Record<string, unknown> {
+): Record<string, unknown> | typeof UNMENTIONED {
   const baseByKey = base as Record<PropertyKey, unknown>;
   const deltaByKey = delta as Record<PropertyKey, unknown>;
   // Copied lazily, on the first write that changes something, so a delta that
   // changes nothing returns the base object by reference.
   let next: Record<PropertyKey, unknown> | undefined;
+  let mentioned = false;
 
   for (const key of enumerableOwnKeys(delta)) {
-    if (isUnsafeKey(key)) continue;
+    // Unsafe keys are skipped before the read: a key the fold refuses to
+    // follow must not be followed to classify the delta either.
+    if (typeof key === "string" && UNSAFE_KEYS.has(key)) continue;
 
     const value = deltaByKey[key];
     // undefined means "field not mentioned": spreading partials never clobbers.
     if (value === undefined) continue;
 
+    // Past both guards the field is one the fold interprets, so the delta is
+    // an operation rather than an empty container, however it turns out.
+    mentioned = true;
     const hasBase = Object.hasOwn(base, key);
     if (value === DELETE || (context.wireDeletes && value === DELETE_TOKEN)) {
       if (hasBase) {
@@ -109,26 +128,6 @@ function foldObject(
     }
   }
 
-  return next ?? base;
-}
-
-/** Shared with the fold above so the two can never disagree about a key. */
-function isUnsafeKey(key: PropertyKey): boolean {
-  return typeof key === "string" && UNSAFE_KEYS.has(key);
-}
-
-/**
- * True when the delta object spells at least one field the fold interprets.
- *
- * Keys the fold skips do not count, so a JSON-shaped delta is empty in memory
- * exactly when it is empty on the wire: `JSON.stringify` erases the
- * `undefined` fields, and unsafe keys are skipped at both ends.
- *
- * The unsafe test precedes the read: a key the fold refuses to follow must
- * not be followed here either, however it is spelled.
- */
-function mentionsAnyField(delta: Record<string, unknown>): boolean {
-  const deltaByKey = delta as Record<PropertyKey, unknown>;
-
-  return enumerableOwnKeys(delta).some((key) => !isUnsafeKey(key) && deltaByKey[key] !== undefined);
+  if (next !== undefined) return next;
+  return mentioned ? base : UNMENTIONED;
 }
