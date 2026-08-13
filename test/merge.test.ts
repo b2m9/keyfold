@@ -77,6 +77,23 @@ describe("object folding", () => {
     expect(next.address).toBe(foreign);
   });
 
+  test("passes a cycle through wherever the fold does not recurse", () => {
+    // Pins the documented limit rather than a desirable behavior. Cyclic input
+    // is outside the contract, but only a cycle the fold recurses through
+    // costs anything; carrying one across adds no traversal.
+    const mergeUnknown = createMerger<Record<string, unknown>>({ replace: ["cfg"] });
+    const cyclic: Record<string, unknown> = { name: "c" };
+    cyclic.self = cyclic;
+    const unkeyed = [cyclic];
+
+    expect(mergeUnknown({ cyclic, other: 1 }, { other: 2 }).cyclic).toBe(cyclic);
+    expect(mergeUnknown({}, { cfg: cyclic } as Delta<Record<string, unknown>>).cfg).toBe(cyclic);
+    expect(mergeUnknown({}, { unkeyed } as Delta<Record<string, unknown>>).unkeyed).toBe(unkeyed);
+    expect(() => mergeUnknown({}, { deep: cyclic } as Delta<Record<string, unknown>>)).toThrow(
+      RangeError,
+    );
+  });
+
   test("preserves and merges own enumerable symbol keys", () => {
     const metadata = Symbol("metadata");
     const mergeSymbols = createMerger<{

@@ -71,7 +71,7 @@ const next = merge(state, {
 });
 ```
 
-The original `state` is untouched. Unmentioned object fields and list items survive, matching items merge in place, new items append, and tombstones remove whole items. Untouched sibling subtrees retain their references.
+The original `state` is untouched. Unmentioned object fields and list items survive, matching items are folded at their existing positions, new items append, and tombstones remove whole items. Untouched sibling subtrees retain their references.
 
 ## API
 
@@ -103,8 +103,10 @@ const replaceItems = createMerger<State>({
 });
 ```
 
-A replacement value is taken verbatim, so a `replace` path swaps in whatever
-the delta supplies without inspecting it.
+Once a replacement boundary is reached the value is taken verbatim and its
+contents are never traversed. At `items[]` the enclosing reconciliation still
+reads the item's identity and tombstone syntax first, because that is what
+decides which item the boundary applies to.
 
 `wireDeletes` lets JSON deltas spell a field delete as the exported `DELETE_TOKEN` string. It is off by default and detailed under Deletes below.
 
@@ -143,7 +145,7 @@ Deleting a missing field is a no-op all the way up the tree. For example,
 deleting `profile.nickname` from `{}` returns the original `{}` instead of
 creating `{ profile: {} }`.
 
-Inside a keyed list, `{ id, $delete: true }` removes the whole item. `$delete` is reserved on keyed items; any other value or a tombstone carrying patch fields throws.
+Inside a keyed list, `{ id, $delete: true }` removes the whole item. `$delete` is reserved on keyed items: any value other than `true` throws, and so does a tombstone carrying any further interpreted field. Unsafe keys on a tombstone are ignored, as they are during recursive object folding.
 
 For JSON transports, both sides can use the fixed exported token:
 
@@ -166,7 +168,7 @@ list unkeyed on a merger where wholesale replacement is what you mean.
 
 ### Errors
 
-`createMerger` throws `KeyfoldConfigError` for malformed or contradictory options. A merger throws `KeyfoldMergeError` when base or delta data violates the contract, such as duplicate identities or malformed tombstones. Both are exported for `instanceof` matching, and a throw never leaves a partially merged tree behind.
+`createMerger` throws `KeyfoldConfigError` for malformed or contradictory options. A merger throws `KeyfoldMergeError` for the keyed-list protocol violations it detects, such as invalid or duplicate identities, malformed tombstones, and reserved values. Other out-of-contract input is not necessarily detected, and some of it throws natively instead — a cycle the fold recurses through raises `RangeError`. Both classes are exported for `instanceof` matching, and a throw never leaves a partially merged tree behind.
 
 ## Paths
 
@@ -195,7 +197,7 @@ All configuration is validated when the merger is created: bad grammar, reserved
 - A merge that changes nothing returns the base reference. Merged values count as unchanged when they are equal by value; replaced values count as unchanged only when they are the very same reference.
 - Every valid delta is deterministic and idempotent: re-applying the same delta returns the previous result by reference, so a store can drop duplicate frames with one equality check.
 
-Replaced values, unkeyed arrays, and non-plain objects are taken as-is, never scanned or sanitized; that is what keeps replacement cheap. A `DELETE` or `$delete` inside such a value is not an operator, just data the caller put there.
+Once a replacement boundary is reached, replaced values, unkeyed arrays, and non-plain objects are taken as-is and their contents are never traversed or sanitized; that is what keeps replacement cheap. A `DELETE` or `$delete` inside such a value is not an operator, just data the caller put there. Before an `items[]` boundary, reconciliation still runs its normal item-shape, identity, uniqueness and tombstone checks, since that is what decides which item is being replaced.
 
 ## Guardrails
 
@@ -203,17 +205,17 @@ Replaced values, unkeyed arrays, and non-plain objects are taken as-is, never sc
 
 Nor is it an implementation of JSON Merge Patch; the tagline describes lineage, not wire compatibility. RFC 7396 spells deletion as `null`, which `keyfold` deliberately keeps as data, so feeding an actual merge-patch document to a merger sets fields to `null` instead of deleting them. If you need to consume real merge-patch documents, translate them before merging.
 
-The cost of a merge scales with the delta, not with the state: branches the delta never mentions are never visited. Keyed lists are the exception, because a touched list is scanned in full to index its identities. Updating one item in a list of ten thousand costs O(list), not O(1).
+A merge recursively follows only the fields a delta names, so unmentioned subtrees are never traversed. Work still scales with the containers it touches. Every recursively merged plain object whose result changes is shallow-copied across its own enumerable fields, changed ancestors included, so changing one field of a five-hundred-field object copies five hundred. Keyed reconciliation indexes every delta item, scans every base item, and builds a candidate list, so updating one item in a list of ten thousand costs O(list), not O(1). Unkeyed arrays and replacement contents are not traversed at all.
 
-Config paths are trusted strings. Bad grammar and contradictory policies throw when the merger is created, and a policy that lands on the wrong runtime shape usually throws during the merge. A typo such as `"order.itmes"`, however, is valid syntax: the real `order.items` stays unkeyed and quietly replaces wholesale.
+Config paths are trusted strings. Bad grammar and contradictory policies throw when the merger is created. A `keyBy` policy then affects a merge only when the delta at that path is an array: reconciliation validates every delta item, and every base item too when the base is an array, treating a non-array base as empty. A non-array delta bypasses reconciliation entirely and follows ordinary merge semantics, so an object there merges rather than reconciles. A typo such as `"order.itmes"` is valid syntax, so the real `order.items` stays unkeyed and quietly replaces wholesale.
 
-Validating wire input is the caller's job. `keyfold` does not inspect untrusted data, and validating a delta is not the same as validating full state: deltas are partial and can carry tombstones or the wire token. `Delta<T>` prevents the in-memory `DELETE` symbol from deleting required fields, but that static protection cannot extend to `DELETE_TOKEN`: TypeScript cannot exclude one reserved literal from a general `string` field.
+Validating wire input is the caller's job. During keyed-list reconciliation `keyfold` performs limited protocol checks — item shape, identity presence, type and uniqueness, tombstone form, reserved values — and recursive object folds ignore unsafe keys, while replacement boundaries keep them as data. It does not validate your application schema and cannot make untrusted input trusted, so it is not a schema validator or a trust boundary. Validating a delta is also not the same as validating full state: deltas are partial and can carry tombstones or the wire token. `Delta<T>` prevents the in-memory `DELETE` symbol from deleting required fields, but that static protection cannot extend to `DELETE_TOKEN`: TypeScript cannot exclude one reserved literal from a general `string` field.
 
 `Delta<T>` cannot know which arrays are keyed. It admits `$delete` on object array items, then runtime policy decides whether that operator is meaningful. Likewise, the type cannot prove that a newly inserted keyed item or a wholesale replacement contains every field your application needs.
 
-Identity fields are the caller's central responsibility: they must remain stable and unique within each list. Two names are reserved in exchange: `$delete` cannot be a real field on keyed entities, and with `wireDeletes: true` the string `"@@keyfold/delete"` can no longer be stored as ordinary field data. Field deletes over JSON also require both ends to speak that protocol; a third-party producer needs a translation layer.
+Identity fields are the caller's central responsibility: they must remain stable and unique within each list. Two names are reserved in exchange: `$delete` cannot be a real field on keyed entities, and with `wireDeletes: true` the string `"@@keyfold/delete"` can no longer be stored at an interpreted object-field position, though it stays ordinary data inside a replacement or an unkeyed array. Field deletes over JSON also require both ends to speak that protocol; a third-party producer needs a translation layer.
 
-Inputs are assumed to be finite, JSON-shaped trees. A cyclic base or delta is outside the contract and overflows the call stack; `keyfold` spends no cycles detecting it.
+Inputs are assumed to be finite, JSON-shaped trees. A cycle the fold recurses through overflows the call stack, and `keyfold` spends no cycles detecting one. A cycle it never recurses through is simply data: one in a branch the delta leaves unmentioned, or inside a value taken verbatim, passes through untouched.
 
 Inputs are also assumed to come from one JavaScript realm. A plain object is one carrying this realm's `Object.prototype`, or none at all; a record built in a `vm` context or an iframe carries that realm's `Object.prototype` instead, so `keyfold` reads it as an opaque value and replaces wholesale, dropping the fields the delta leaves unmentioned. No test reliably separates such a record from a class instance, because every available signal is either realm-scoped or writable by the object's author. Pass foreign data through `structuredClone` to bring it into the receiving realm before merging.
 
