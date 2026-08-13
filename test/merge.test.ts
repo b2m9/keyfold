@@ -106,13 +106,30 @@ describe("object folding", () => {
     ["an absent field", {}],
     ["an undefined field", { value: undefined }],
     ["a wrong-shaped field", { value: 5 }],
-  ])("does not materialize an object for no-op deltas against %s", (_case, base) => {
+  ])(
+    "does not materialize an object for an operator that finds nothing against %s",
+    (_case, base) => {
+      const mergeUnknown = createMerger<Record<string, unknown>>();
+      const delta = { value: { removed: DELETE } } as Delta<Record<string, unknown>>;
+
+      expect(mergeUnknown(base, delta)).toBe(base);
+    },
+  );
+
+  test.each([
+    ["an absent field", {}],
+    ["an undefined field", { value: undefined }],
+    ["a wrong-shaped field", { value: 5 }],
+  ])("materializes an explicitly empty object over %s", (_case, base) => {
     const mergeUnknown = createMerger<Record<string, unknown>>();
-    const deltas = [{ value: {} }, { value: { removed: DELETE } }] as Delta<
+    // A container of only unmentioned fields is empty for the same reason a
+    // literal '{}' is: JSON.stringify erases those fields on the way out, so
+    // the wire form and the in-memory form must agree.
+    const deltas = [{ value: {} }, { value: { unmentioned: undefined } }] as Delta<
       Record<string, unknown>
     >[];
 
-    for (const delta of deltas) expect(mergeUnknown(base, delta)).toBe(base);
+    for (const delta of deltas) expect(mergeUnknown(base, delta)).toEqual({ value: {} });
   });
 });
 
@@ -199,6 +216,39 @@ describe("plain-object safety", () => {
 
     expect(Object.hasOwn(next, "__proto__")).toBe(true);
     expect(Object.getPrototypeOf(next)).toBe(Object.prototype);
+  });
+
+  test("materializes a container of only unsafe keys as a safe empty object", () => {
+    // Unsafe keys are skipped wherever a delta object is folded, so a
+    // container holding nothing else is empty and materializes like any
+    // other. What lands is a clean object, never the prototype the delta
+    // tried to smuggle in.
+    const delta = JSON.parse('{"value":{"__proto__":{"polluted":true}}}') as Delta<
+      Record<string, unknown>
+    >;
+    const next = merge({}, delta);
+
+    expect(next).toEqual({ value: {} });
+    expect(Object.getPrototypeOf(next.value)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  test("never reads an unsafe key, not even to decide whether a container is empty", () => {
+    // Deciding emptiness must not become a second path that follows a key the
+    // fold itself refuses to follow.
+    let reads = 0;
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, "__proto__", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return { polluted: true };
+      },
+    });
+
+    expect(merge({}, { value: hostile } as Delta<Record<string, unknown>>)).toEqual({ value: {} });
+    expect(reads).toBe(0);
   });
 
   test("preserves the prototype of a null-prototype plain object", () => {

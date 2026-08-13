@@ -17,6 +17,7 @@ interface Item {
 interface Shape {
   title?: string;
   meta: { version?: number; note?: string };
+  profile?: { nickname?: string };
   tags?: string[];
   items: Item[];
 }
@@ -42,6 +43,7 @@ const baseArbitrary: fc.Arbitrary<Shape> = fc.record(
   {
     title: fc.string(),
     meta: fc.record({ version: fc.integer(), note: fc.string() }, { requiredKeys: [] }),
+    profile: fc.record({ nickname: fc.string() }, { requiredKeys: [] }),
     tags: fc.array(fc.string()),
     items: fc.uniqueArray(item, { selector: (value) => value.id }),
   },
@@ -68,6 +70,9 @@ const deltaArbitrary = fc.record(
   {
     title: fc.oneof(fc.string(), fc.constant(DELETE)),
     meta: fc.record({ version: fc.integer(), note: fc.string() }, { requiredKeys: [] }),
+    // Optional in the base and able to generate '{}', so every law below sees
+    // an empty container materialize over an absent field.
+    profile: fc.record({ nickname: fc.string() }, { requiredKeys: [] }),
     tags: fc.array(fc.string()),
     items: fc.uniqueArray(itemPatch, { selector: (value) => value.id }),
   },
@@ -202,6 +207,31 @@ describe("wire safety", () => {
     fc.assert(
       fc.property(baseArbitrary, wireDelta, (base, delta) => {
         expect(containsOperator(mergeWire(base, delta))).toBe(false);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  test("a delta and its JSON form agree", () => {
+    // Serializing erases the fields a delta leaves unmentioned, so a container
+    // of nothing but those fields arrives as an empty one. Emptiness is judged
+    // by the fields the fold interprets precisely so the two cannot diverge.
+    const unmentioned = <T>(arbitrary: fc.Arbitrary<T>) =>
+      fc.oneof(arbitrary, fc.constant(undefined));
+    const jsonSafeDelta = fc.record({
+      title: unmentioned(fc.string()),
+      profile: unmentioned(fc.record({ nickname: unmentioned(fc.string()) })),
+      items: unmentioned(
+        fc.uniqueArray(fc.record({ id: identity, label: unmentioned(fc.string()) }), {
+          selector: (value) => value.id,
+        }),
+      ),
+    }) as fc.Arbitrary<Delta<Shape>>;
+
+    fc.assert(
+      fc.property(baseArbitrary, jsonSafeDelta, (base, delta) => {
+        const wire = JSON.parse(JSON.stringify(delta)) as Delta<Shape>;
+        expect(mergeWire(base, wire)).toEqual(mergeWire(base, delta));
       }),
       { numRuns: 200 },
     );

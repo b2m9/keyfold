@@ -6,7 +6,6 @@ import { DELETE_TOKEN } from "./sentinels.js";
 export interface FoldContext {
   readonly wireDeletes: boolean;
   fold(base: unknown, delta: unknown, policy: PolicyNode | undefined, path: string): unknown;
-  foldInsert(delta: unknown, policy: PolicyNode | undefined, path: string): unknown;
 }
 
 interface Patch {
@@ -62,9 +61,9 @@ export function reconcile(
   for (const patch of patches.values()) {
     // A tombstone whose target is absent is a no-op; deletes stay idempotent.
     if (!patch.tombstone) {
-      // Construction consumes nested operators without discarding explicit
-      // empty containers from the supplied item.
-      next.push(context.foldInsert(patch.item, itemPolicy, `${path}[]`));
+      // An inserted item is folded onto nothing, so nested operators are
+      // consumed by the same rules that apply to an existing item.
+      next.push(context.fold(undefined, patch.item, itemPolicy, `${path}[]`));
       changed = true;
     }
   }
