@@ -175,6 +175,29 @@ describe("keyed-list reconciliation", () => {
     expect(next.items).toEqual([{ id: "a", spelled: {} }]);
   });
 
+  test("engages a keyBy policy only when the delta at that path is an array", () => {
+    // A non-array delta never reaches reconciliation, so it follows ordinary
+    // merge semantics: it folds onto a plain-object base and replaces anything
+    // else, including the keyed list the policy was written for.
+    const mergeUnknown = createMerger<Record<string, unknown>>({ keyBy: { items: "id" } });
+    const objectBase = { items: { a: 1 } };
+
+    expect(mergeUnknown(objectBase, { items: { b: 2 } } as Delta<Record<string, unknown>>)).toEqual(
+      {
+        items: { a: 1, b: 2 },
+      },
+    );
+    expect(mergeUnknown(objectBase, { items: { a: 1 } } as Delta<Record<string, unknown>>)).toBe(
+      objectBase,
+    );
+    expect(
+      mergeUnknown({ items: [{ id: "a" }] }, { items: { b: 2 } } as Delta<Record<string, unknown>>),
+    ).toEqual({ items: { b: 2 } });
+    expect(
+      mergeUnknown({ items: [{ id: "a" }] }, { items: "gone" } as Delta<Record<string, unknown>>),
+    ).toEqual({ items: "gone" });
+  });
+
   test("reconciles a keyed delta against an empty list after a type mismatch", () => {
     const mergeUnknown = createMerger<Record<string, unknown>>({ keyBy: { items: "id" } });
     const next = mergeUnknown({ items: "wrong shape" }, {
@@ -212,6 +235,25 @@ describe("item replacement", () => {
     });
 
     expect(next.items.at(-1)?.note).toBe(DELETE);
+  });
+
+  test.each([
+    ["a missing identity", [{ sku: "NEW", quantity: 1 }]],
+    ["a duplicate identity", [{ id: "c" }, { id: "c" }]],
+    ["a malformed tombstone", [{ id: "a", $delete: 1 }]],
+  ])("validates %s before an item reaches its replacement boundary", (_case, items) => {
+    // Replacement is verbatim only once reconciliation has settled which item
+    // it applies to, so identity, uniqueness and tombstone syntax are checked
+    // first and no item can bypass them by being replaced.
+    expect(() => replaceItems(state(), { items } as unknown as Delta<State>)).toThrow(
+      KeyfoldMergeError,
+    );
+  });
+
+  test("still honours a tombstone rather than swapping it in", () => {
+    const next = replaceItems(state(), { items: [{ id: "a", $delete: true }] } as Delta<State>);
+
+    expect(next.items).toEqual([{ id: "b", sku: "GADGET", quantity: 3 }]);
   });
 });
 
