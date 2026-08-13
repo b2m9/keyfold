@@ -4,8 +4,6 @@ import { reconcile, type FoldContext } from "./reconcile.js";
 import { DELETE, DELETE_TOKEN } from "./sentinels.js";
 import type { Delta, MergeOptions } from "./types.js";
 
-type FoldMode = "merge" | "insert";
-
 /**
  * Configure an immutable delta fold for one state shape.
  *
@@ -19,11 +17,10 @@ export function createMerger<T, Atomic = never>(
   const compiled = compileOptions(options);
   const context: FoldContext = {
     wireDeletes: compiled.wireDeletes,
-    fold: (base, delta, policy, path) => fold(base, delta, policy, context, path, "merge"),
-    foldInsert: (delta, policy, path) => fold(undefined, delta, policy, context, path, "insert"),
+    fold: (base, delta, policy, path) => fold(base, delta, policy, context, path),
   };
 
-  return (base, delta) => fold(base, delta, compiled.root, context, "", "merge") as T;
+  return (base, delta) => fold(base, delta, compiled.root, context, "") as T;
 }
 
 function fold(
@@ -32,7 +29,6 @@ function fold(
   policy: PolicyNode | undefined,
   context: FoldContext,
   path: string,
-  mode: FoldMode,
 ): unknown {
   // Replace is deliberately a pointer swap: no traversal or sanitizing pass.
   if (policy?.replace === true) return delta;
@@ -48,15 +44,15 @@ function fold(
         context,
         path,
       );
-      return finishContainerFold(base, workingBase, folded, mode);
+      return finishContainerFold(base, workingBase, folded, delta.length === 0);
     }
     return delta;
   }
 
   if (isPlainObject(delta)) {
     const workingBase = isPlainObject(base) ? base : {};
-    const folded = foldObject(workingBase, delta, policy, context, path, mode);
-    return finishContainerFold(base, workingBase, folded, mode);
+    const folded = foldObject(workingBase, delta, policy, context, path);
+    return finishContainerFold(base, workingBase, folded, !mentionsAnyField(delta));
   }
 
   return delta;
@@ -68,7 +64,6 @@ function foldObject(
   policy: PolicyNode | undefined,
   context: FoldContext,
   path: string,
-  mode: FoldMode,
 ): Record<string, unknown> {
   const baseByKey = base as Record<PropertyKey, unknown>;
   const deltaByKey = delta as Record<PropertyKey, unknown>;
@@ -103,7 +98,6 @@ function foldObject(
       childPolicy,
       context,
       typeof key === "string" ? (path === "" ? key : `${path}.${key}`) : `${path}[${String(key)}]`,
-      mode,
     );
     if (!Object.is(folded, baseValue)) {
       next ??= copyPlainObject(base) as Record<PropertyKey, unknown>;
@@ -114,13 +108,29 @@ function foldObject(
   return next ?? base;
 }
 
+/**
+ * True when the delta object spells at least one field the fold interprets.
+ *
+ * Keys the fold always skips do not count, so a container is empty in memory
+ * exactly when it is empty on the wire: `JSON.stringify` erases `undefined`
+ * fields, and unsafe keys are ignored everywhere.
+ */
+function mentionsAnyField(delta: Record<string, unknown>): boolean {
+  const deltaByKey = delta as Record<PropertyKey, unknown>;
+
+  return enumerableOwnKeys(delta).some(
+    (key) => deltaByKey[key] !== undefined && !(typeof key === "string" && UNSAFE_KEYS.has(key)),
+  );
+}
+
 function finishContainerFold(
   base: unknown,
   workingBase: unknown,
   folded: unknown,
-  mode: FoldMode,
+  deltaIsEmpty: boolean,
 ): unknown {
-  // Synthetic containers are scaffolding, not writes. Item construction is
-  // the exception because explicitly supplied empty containers are data.
-  return mode === "merge" && Object.is(folded, workingBase) ? base : folded;
+  // A synthetic container is scaffolding, not a write, so an operation that
+  // found nothing to do collapses back to the original value. An empty
+  // container is not a failed operation: it is data, and it materializes.
+  return !deltaIsEmpty && Object.is(folded, workingBase) ? base : folded;
 }

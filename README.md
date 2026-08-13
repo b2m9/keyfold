@@ -103,8 +103,8 @@ const replaceItems = createMerger<State>({
 });
 ```
 
-Replacement values are explicit data, so an empty object or array at a
-`replace` path is materialized rather than treated as a recursive no-op.
+A replacement value is taken verbatim, so a `replace` path swaps in whatever
+the delta supplies without inspecting it.
 
 `wireDeletes` lets JSON deltas spell a field delete as the exported `DELETE_TOKEN` string. It is off by default and detailed under Deletes below.
 
@@ -160,11 +160,9 @@ merge(state, delta); // removes coupon
 The token is interpreted only as an object field value. Nested inside a wholesale `replace` value or an unkeyed array, it remains an ordinary string. Item tombstones are already JSON-native and do not require `wireDeletes`.
 
 There is deliberately no "clear the list" operator: an empty keyed-list delta
-performs no item operations, so it preserves the original value and does not
-materialize an absent list. To empty an existing keyed list, tombstone every
-item, or leave the list unkeyed on a merger where wholesale replacement is
-what you mean. A new keyed item is constructed from the fields it supplies, so
-an explicit empty nested object or keyed list on that item remains present.
+performs no item operations, so an existing list keeps its items and its
+reference. To empty an existing keyed list, tombstone every item, or leave the
+list unkeyed on a merger where wholesale replacement is what you mean.
 
 ### Errors
 
@@ -189,8 +187,9 @@ All configuration is validated when the merger is created: bad grammar, reserved
 - Plain objects deep-merge using own enumerable fields.
 - Keyed lists reconcile by identity; survivors retain base order and inserts append.
 - Unkeyed arrays, scalars, and non-plain objects replace wholesale.
-- Object and keyed-list deltas use empty working containers when the base has the wrong shape. A no-op preserves the original value and reference; a real field or item produces the correctly shaped result.
-- New keyed items consume nested operators at interpreted positions while retaining explicitly supplied empty containers. A `replace` boundary or unkeyed array inside the item is still taken verbatim.
+- An empty object or keyed list in a delta is data: it ensures the field exists, replacing an absent or wrong-shaped value with an empty container. A container is empty when it mentions no field the fold interprets, so `{}` and `{ field: undefined }` mean the same thing here and survive JSON alike.
+- An operator that finds nothing to do is not data. Deleting an absent field, or tombstoning an absent item, preserves the original value and reference all the way up the tree, and never conjures a container to operate on.
+- New keyed items are folded onto nothing, so they follow those same rules. A `replace` boundary or unkeyed array inside the item is taken verbatim.
 - `__proto__`, `constructor`, and `prototype` keys in deltas are ignored.
 - The base is never mutated. A throw cannot leave a partial write behind.
 - A merge that changes nothing returns the base reference. Merged values count as unchanged when they are equal by value; replaced values count as unchanged only when they are the very same reference.
