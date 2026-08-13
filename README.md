@@ -94,7 +94,7 @@ const merge = createMerger<State>({
 
 `keyBy` maps a list path to its identity field. Identity values must be stable, unique strings or numbers. Matching is strict, so `1` and `"1"` are different items, while `0` and `""` are valid identities. Missing, duplicate, `NaN`, and non-string/non-number identities throw.
 
-`replace` makes a path swap wholesale instead of deep-merging or reconciling. A wholesale swap never recurses, so `createMerger` rejects any policy nested below a replaced path. The `"order.items[]"` form is the item-swap idiom: the list still matches items by identity, but each matched item is replaced by its incoming value instead of merged:
+`replace` makes a path swap wholesale instead of deep-merging or reconciling. A wholesale swap never recurses, so `createMerger` rejects any policy nested below a replaced path. Keying and replacing the same path is rejected too: one says to enter the list and the other says it is opaque, so they contradict rather than nest. The `"order.items[]"` form is the item-swap idiom: the list still matches items by identity, but each matched item is replaced by its incoming value instead of merged:
 
 ```ts
 const replaceItems = createMerger<State>({
@@ -182,7 +182,7 @@ Paths are dot-separated property names. `[]` means “inside each keyed item of 
 
 There are no wildcards, indices, root tokens, or escaping. Properties containing `.`, `[`, or `]` are not addressable in v1. The root cannot be keyed; wrap a top-level array in an object when it needs reconciliation.
 
-All configuration is validated when the merger is created: bad grammar, reserved names, duplicates, `[]` segments under lists that have no key, and policies made unreachable by a broader `replace` all throw. Paths are never checked against `T` or runtime data.
+All configuration is validated when the merger is created: bad grammar, reserved names, duplicates, `[]` segments under lists that have no key, policies made unreachable by a broader `replace`, and a path that is both keyed and replaced all throw. Paths are never checked against `T` or runtime data.
 
 ## Semantics
 

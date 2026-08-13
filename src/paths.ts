@@ -87,11 +87,24 @@ export function compileOptions(options: MergeOptions): CompiledOptions {
     // itself; the reverse nesting ('<list>[]' under a keyBy list) is the
     // load-bearing item-swap idiom and passes.
     for (const keyed of keyPolicies) {
-      if (isPrefix(policy.segments, keyed.segments)) {
+      if (!isPrefix(policy.segments, keyed.segments)) continue;
+      // Equal paths do not nest. Neither policy shadows the other: one says
+      // the list is opaque and the other says to enter it, so the config
+      // contradicts itself rather than stranding a subtree.
+      // A keyBy path never ends in '[]', so appending it always names the
+      // item-swap spelling, which is not guessable from the error. Name the
+      // spelling and stop there: what else the caller has configured decides
+      // whether the rest compiles, and this message cannot know that.
+      if (policy.segments.length === keyed.segments.length) {
         throw new KeyfoldConfigError(
-          `replace path '${policy.path}' makes keyBy path '${keyed.path}' unreachable`,
+          `path '${policy.path}' cannot be both keyed and replaced: keyBy enters the list, ` +
+            `replace treats it as opaque; replacing matched items instead is spelled ` +
+            `'${policy.path}[]'`,
         );
       }
+      throw new KeyfoldConfigError(
+        `replace path '${policy.path}' makes keyBy path '${keyed.path}' unreachable`,
+      );
     }
     for (const other of replacePolicies) {
       if (
