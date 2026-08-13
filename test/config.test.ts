@@ -46,7 +46,6 @@ describe("configuration validation", () => {
   });
 
   const unreachableOptions: MergeOptions[] = [
-    { keyBy: { "order.items": "id" }, replace: ["order.items"] },
     { keyBy: { "order.items": "id" }, replace: ["order"] },
     {
       keyBy: { "order.items": "id", "order.items[].components": "sku" },
@@ -60,6 +59,30 @@ describe("configuration validation", () => {
       expect(() => createMerger(options)).toThrow(/unreachable/);
     },
   );
+
+  test("names the item-swap idiom when one path is both keyed and replaced", () => {
+    // Nothing is stranded here, so 'unreachable' would misdescribe it: the two
+    // policies contradict each other at the same node. The message has to name
+    // the item-swap spelling, because that spelling is not guessable.
+    const collide = () =>
+      createMerger({ keyBy: { "order.items": "id" }, replace: ["order.items"] });
+
+    expect(collide).toThrow(KeyfoldConfigError);
+    expect(collide).toThrow(/cannot be both keyed and replaced/);
+    expect(collide).toThrow(/'order\.items\[\]'/);
+    expect(collide).not.toThrow(/unreachable/);
+  });
+
+  test("names the item-swap spelling without prescribing the rest of the config", () => {
+    // The message reports one collision; it cannot know whether the caller's
+    // other policies also collide. Naming a spelling stays true either way,
+    // where telling them what to do would not.
+    const alsoCollidesElsewhere = () =>
+      createMerger({ keyBy: { items: "id" }, replace: ["items", "items[].parts"] });
+
+    expect(alsoCollidesElsewhere).toThrow(/'items\[\]'/);
+    expect(alsoCollidesElsewhere).not.toThrow(/\b(drop|remove|use replace path)\b/);
+  });
 
   test("rejects a replace path shadowed by a broader replace path", () => {
     expect(() => createMerger({ replace: ["a", "a.b"] })).toThrow(/unreachable/);
